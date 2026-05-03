@@ -1,0 +1,109 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // Validation Blueprint: Tournament
+    function isValidTournament(data) {
+      return data.keys().hasAll(['name', 'gameType', 'code', 'createdAt', 'status', 'creatorId']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.code is string && data.code.size() >= 4 && data.code.size() <= 10 &&
+             data.gameType in ['free_fire', 'pubg'] &&
+             data.status in ['ongoing', 'completed'] &&
+             data.creatorId == request.auth.uid;
+    }
+
+    // Validation Blueprint: Team
+    function isValidTeam(data) {
+      return data.keys().hasAll(['name', 'tag', 'totalPoints', 'totalKills', 'matchesPlayed']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             data.tag is string && data.tag.size() <= 10 &&
+             data.totalPoints is number &&
+             data.totalKills is number &&
+             data.matchesPlayed is number;
+    }
+
+    // Validation Blueprint: Player
+    function isValidPlayer(data) {
+      return data.keys().hasAll(['name', 'totalKills']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             data.totalKills is number;
+    }
+
+    // Validation Blueprint: MatchResult
+    function isValidMatchResult(data) {
+      return data.keys().hasAll(['teamId', 'matchNumber', 'placement', 'kills', 'placementPoints', 'totalMatchPoints', 'timestamp']) &&
+             isValidId(data.teamId) &&
+             data.matchNumber is number &&
+             data.placement is number &&
+             data.kills is number &&
+             data.placementPoints is number &&
+             data.totalMatchPoints is number;
+    }
+
+    // Validation Blueprint: PlayerMatchResult
+    function isValidPlayerMatchResult(data) {
+      return data.keys().hasAll(['tournamentId', 'teamId', 'playerId', 'matchNumber', 'kills', 'timestamp']) &&
+             isValidId(data.tournamentId) &&
+             isValidId(data.teamId) &&
+             isValidId(data.playerId) &&
+             data.matchNumber is number &&
+             data.kills is number;
+    }
+
+    match /tournaments/{tournamentId} {
+      allow read: if true; 
+      allow create: if isSignedIn() && isValidTournament(incoming());
+      allow update: if isSignedIn() && existing().creatorId == request.auth.uid && isValidTournament(incoming()) &&
+                   incoming().creatorId == existing().creatorId;
+      allow delete: if isSignedIn() && existing().creatorId == request.auth.uid;
+
+      match /teams/{teamId} {
+        allow read: if true;
+        allow create, update: if isSignedIn() && 
+          get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid &&
+          isValidTeam(incoming()) && isValidId(teamId);
+        allow delete: if isSignedIn() && 
+          get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid;
+
+        match /players/{playerId} {
+          allow read: if true;
+          allow create, update: if isSignedIn() && 
+            get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid &&
+            isValidPlayer(incoming()) && isValidId(playerId);
+          allow delete: if isSignedIn() && 
+            get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid;
+        }
+      }
+
+      match /results/{resultId} {
+        allow read: if true;
+        allow create, update: if isSignedIn() && 
+          get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid &&
+          isValidMatchResult(incoming()) && isValidId(resultId);
+        allow delete: if isSignedIn() && 
+          get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid;
+      }
+
+      match /playerResults/{playerResId} {
+        allow read: if true;
+        allow create, update: if isSignedIn() && 
+          get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid &&
+          isValidPlayerMatchResult(incoming()) && isValidId(playerResId);
+        allow delete: if isSignedIn() && 
+          get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid;
+      }
+    }
+  }
+}
