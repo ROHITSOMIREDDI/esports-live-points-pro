@@ -15,7 +15,9 @@ import {
   Settings,
   Edit2,
   Check,
-  X
+  X,
+  Download,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -1085,6 +1087,10 @@ function MatchHistory({ tournament, teams, isAdmin }: { tournament: Tournament, 
 }
 
 function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, teams: Team[], isAdmin: boolean }) {
+  const [regMode, setRegMode] = useState<'manual' | 'bulk'>('manual');
+  const [parsedTeams, setParsedTeams] = useState<{ name: string, players: string[], tag: string }[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamTag, setNewTeamTag] = useState("");
   const [newPlayerNames, setNewPlayerNames] = useState<string[]>(["", "", "", ""]);
@@ -1142,6 +1148,146 @@ function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, te
 
   const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
+  };
+
+  const downloadCSVTemplate = () => {
+    // BOM prefix ensures Excel opens the file with correct UTF-8 encoding
+    const BOM = '\uFEFF';
+    const headers = "Team Name,Player 1,Player 2,Player 3,Player 4,Player 5 (Optional)\n";
+    const exampleRow = "Team Alpha,AlphaPlayer1,AlphaPlayer2,AlphaPlayer3,AlphaPlayer4,AlphaPlayer5\n";
+    const csvContent = BOM + headers + exampleRow;
+
+    // Use a data URI for reliable cross-browser download (avoids createObjectURL race conditions)
+    const dataUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", dataUri);
+    link.setAttribute("download", "esports_teams_template.csv");
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      try {
+        const parsed: { name: string, players: string[], tag: string }[] = [];
+        const lines = text.split(/\r?\n/);
+        
+        let startIndex = 0;
+        if (lines.length > 0 && (lines[0].toLowerCase().includes("team") || lines[0].toLowerCase().includes("player"))) {
+          startIndex = 1;
+        }
+
+        let slotIndex = teams.length + 1;
+
+        for (let i = startIndex; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          // Simple CSV line parser
+          const columns: string[] = [];
+          let currentField = '';
+          let insideQuotes = false;
+          
+          for (let charIndex = 0; charIndex < line.length; charIndex++) {
+            const char = line[charIndex];
+            if (char === '"') {
+              insideQuotes = !insideQuotes;
+            } else if (char === ',' && !insideQuotes) {
+              columns.push(currentField.trim());
+              currentField = '';
+            } else {
+              currentField += char;
+            }
+          }
+          columns.push(currentField.trim());
+
+          const teamName = columns[0];
+          if (!teamName) continue;
+
+          const players: string[] = [];
+          for (let colIdx = 1; colIdx <= 5; colIdx++) {
+            const pName = columns[colIdx];
+            if (pName) {
+              players.push(pName);
+            }
+          }
+
+          parsed.push({
+            name: teamName,
+            players,
+            tag: slotIndex.toString()
+          });
+
+          slotIndex++;
+        }
+
+        setParsedTeams(parsed);
+        e.target.value = '';
+      } catch (err) {
+        console.error("Error parsing CSV:", err);
+        showNotification("Failed to parse CSV file. Make sure it has valid fields.", "error");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const importBulkTeams = async () => {
+    if (parsedTeams.length === 0) return;
+    setIsImporting(true);
+    try {
+      const batchOp = writeBatch(db);
+
+      for (const pTeam of parsedTeams) {
+        const teamRef = doc(collection(db, 'tournaments', tournament.id, 'teams'));
+        
+        batchOp.set(teamRef, {
+          name: pTeam.name,
+          tag: pTeam.tag,
+          totalPoints: 0,
+          totalKills: 0,
+          matchesPlayed: 0,
+          wins: 0,
+          logoUrl: ""
+        });
+
+        const playersToCreate: string[] = [];
+        for (let i = 0; i < 5; i++) {
+          const pName = pTeam.players[i];
+          if (pName && pName.trim() !== "") {
+            playersToCreate.push(pName.trim());
+          } else if (i < 4) {
+            playersToCreate.push(`${pTeam.tag}_Player ${i + 1}`);
+          }
+        }
+
+        for (const pName of playersToCreate) {
+          const playerRef = doc(collection(db, 'tournaments', tournament.id, 'teams', teamRef.id, 'players'));
+          batchOp.set(playerRef, {
+            name: pName,
+            totalKills: 0
+          });
+        }
+      }
+
+      await batchOp.commit();
+      showNotification(`Successfully imported ${parsedTeams.length} squads!`);
+      setParsedTeams([]);
+      setRegMode('manual');
+    } catch (err) {
+      console.error("Bulk import error:", err);
+      showNotification("Failed to import teams. Please check connection.", "error");
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   useEffect(() => {
@@ -1551,64 +1697,163 @@ function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, te
             </div>
 
             <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 backdrop-blur-sm space-y-6">
-              <form onSubmit={addTeam} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 italic">Squad Name</label>
-                    <input
-                      value={newTeamName}
-                      required
-                      onChange={e => setNewTeamName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:border-yellow-400 focus:outline-none text-sm font-bold uppercase"
-                      placeholder="E.G. TEAM_SOUL"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 italic">Squad Tag</label>
-                    <input
-                      value={newTeamTag}
-                      required
-                      onChange={e => setNewTeamTag(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:border-yellow-400 focus:outline-none text-sm font-bold uppercase tracking-widest"
-                      placeholder="TAG"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 italic">Initial Roster (Optional)</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {newPlayerNames.map((name, i) => (
-                      <input
-                        key={i}
-                        value={name}
-                        onChange={e => {
-                          const updated = [...newPlayerNames];
-                          updated[i] = e.target.value;
-                          setNewPlayerNames(updated);
-                        }}
-                        className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 focus:border-yellow-400 focus:outline-none text-[11px] font-bold uppercase"
-                        placeholder={`Player ${i + 1}`}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex justify-center">
-                    {newPlayerNames.length < 5 && (
-                      <button
-                        type="button"
-                        onClick={() => setNewPlayerNames([...newPlayerNames, ""])}
-                        className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-yellow-400 transition-colors"
-                      >
-                        + Add Player Row
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <button type="submit" className="w-full bg-slate-100 text-slate-950 py-3 rounded-xl font-black uppercase tracking-wider text-[10px] hover:bg-white transition-all shadow-xl shadow-white/5 active:scale-95">
-                  Register Squad Terminal
+              {/* Mode Toggle Switch */}
+              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={() => setRegMode('manual')}
+                  className={cn(
+                    "flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all italic",
+                    regMode === 'manual' ? "bg-slate-800 text-yellow-400 font-black" : "text-slate-500 hover:text-slate-300"
+                  )}
+                >
+                  Manual Entry
                 </button>
-              </form>
+                <button
+                  type="button"
+                  onClick={() => setRegMode('bulk')}
+                  className={cn(
+                    "flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all italic",
+                    regMode === 'bulk' ? "bg-slate-800 text-yellow-400 font-black" : "text-slate-500 hover:text-slate-300"
+                  )}
+                >
+                  Bulk Import (CSV)
+                </button>
+              </div>
+
+              {regMode === 'manual' ? (
+                <form onSubmit={addTeam} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 italic">Squad Name</label>
+                      <input
+                        value={newTeamName}
+                        required
+                        onChange={e => setNewTeamName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:border-yellow-400 focus:outline-none text-sm font-bold uppercase"
+                        placeholder="E.G. TEAM_SOUL"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 italic">Squad Tag</label>
+                      <input
+                        value={newTeamTag}
+                        required
+                        onChange={e => setNewTeamTag(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:border-yellow-400 focus:outline-none text-sm font-bold uppercase tracking-widest"
+                        placeholder="TAG"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 italic">Initial Roster (Optional)</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {newPlayerNames.map((name, i) => (
+                        <input
+                          key={i}
+                          value={name}
+                          onChange={e => {
+                            const updated = [...newPlayerNames];
+                            updated[i] = e.target.value;
+                            setNewPlayerNames(updated);
+                          }}
+                          className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 focus:border-yellow-400 focus:outline-none text-[11px] font-bold uppercase"
+                          placeholder={`Player ${i + 1}`}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex justify-center">
+                      {newPlayerNames.length < 5 && (
+                        <button
+                          type="button"
+                          onClick={() => setNewPlayerNames([...newPlayerNames, ""])}
+                          className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-yellow-400 transition-colors"
+                        >
+                          + Add Player Row
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <button type="submit" className="w-full bg-slate-100 text-slate-950 py-3 rounded-xl font-black uppercase tracking-wider text-[10px] hover:bg-white transition-all shadow-xl shadow-white/5 active:scale-95">
+                    Register Squad Terminal
+                  </button>
+                </form>
+              ) : (
+                parsedTeams.length === 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 hover:border-yellow-400/40 rounded-2xl p-8 bg-slate-950/30 transition-all text-center relative group">
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleCSVUpload}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <Upload className="w-8 h-8 text-slate-500 group-hover:text-yellow-400 transition-colors mb-2" />
+                      <p className="text-xs font-bold text-slate-300">Click or Drag & Drop CSV</p>
+                      <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-1">Files must be in CSV format</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={downloadCSVTemplate}
+                      className="w-full flex items-center justify-center gap-2 border border-slate-800 hover:border-slate-700 bg-slate-950 text-slate-300 hover:text-white py-3 rounded-xl font-black uppercase tracking-wider text-[10px] transition-all"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download CSV Template
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-yellow-400 italic">Parsed {parsedTeams.length} Squads</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setParsedTeams([])} 
+                        className="text-[10px] font-black text-red-400 hover:text-red-300 uppercase tracking-wider"
+                      >
+                        Clear Upload
+                      </button>
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto border border-slate-800 rounded-2xl custom-scrollbar bg-slate-950/50">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-slate-800 bg-slate-950 sticky top-0 italic">
+                            <th className="px-4 py-2 text-left">Slot</th>
+                            <th className="px-4 py-2 text-left">Team Name</th>
+                            <th className="px-4 py-2 text-left">Roster</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {parsedTeams.map((pt, idx) => (
+                            <tr key={idx} className="border-b border-slate-800/40 last:border-0 hover:bg-slate-800/20">
+                              <td className="px-4 py-2 font-black italic text-yellow-400">{pt.tag}</td>
+                              <td className="px-4 py-2 font-bold text-slate-200 uppercase">{pt.name}</td>
+                              <td className="px-4 py-2 text-slate-400 text-[10px]">
+                                {pt.players.join(', ') || 'No players'}
+                                {pt.players.length < 4 && <span className="text-red-400 ml-1 font-bold">(Auto-fills {4 - pt.players.length} placeholders)</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isImporting}
+                      onClick={importBulkTeams}
+                      className={cn(
+                        "w-full bg-yellow-400 text-slate-950 py-3.5 rounded-xl font-black uppercase tracking-wider text-xs shadow-xl shadow-yellow-400/10 active:scale-95 transition-all flex items-center justify-center gap-2",
+                        isImporting && "opacity-50 cursor-wait"
+                      )}
+                    >
+                      {isImporting ? "Importing Roster..." : <>Confirm & Import Teams <Check className="w-4 h-4" /></>}
+                    </button>
+                  </div>
+                )
+              )}
 
               <div className="pt-6 border-t border-slate-800 space-y-4">
                 <div className="flex items-center justify-between mb-2">
