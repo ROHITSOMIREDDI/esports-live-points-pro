@@ -4,6 +4,7 @@ import {
   Trophy,
   Users,
   Gamepad2,
+  Bell,
   LogOut,
   ShieldAlert,
   Trash2,
@@ -238,6 +239,7 @@ export default function App() {
         name,
         gameType,
         code,
+        announcement: '',
         createdAt: serverTimestamp(),
         status: 'ongoing',
         creatorId: user.uid
@@ -494,10 +496,26 @@ export default function App() {
 function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournament, user: User | null, onBack: () => void }) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [liveTournament, setLiveTournament] = useState<Tournament>(tournament);
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'players' | 'matches' | 'admin'>('leaderboard');
   const [playerTeamFilter, setPlayerTeamFilter] = useState<string>("all");
   const [playerSortBy, setPlayerSortBy] = useState<'totalKills' | 'avgKills'>('totalKills');
-  const isAdmin = user && user.uid === tournament.creatorId;
+  const isAdmin = user && user.uid === liveTournament.creatorId;
+
+  useEffect(() => {
+    setLiveTournament(tournament);
+  }, [tournament]);
+
+  useEffect(() => {
+    const tournamentRef = doc(db, 'tournaments', tournament.id);
+    const unsubTournament = onSnapshot(tournamentRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setLiveTournament({ id: snapshot.id, ...snapshot.data() } as Tournament);
+      }
+    });
+
+    return () => unsubTournament();
+  }, [tournament.id]);
 
   useEffect(() => {
     const qTeams = query(collection(db, 'tournaments', tournament.id, 'teams'));
@@ -552,7 +570,7 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
   const generateReport = () => {
     let report = `====================================================\n`;
     report += `          OFFICIAL TOURNAMENT REPORT\n`;
-    report += `          ${tournament.name.toUpperCase()}\n`;
+    report += `          ${liveTournament.name.toUpperCase()}\n`;
     report += `====================================================\n\n`;
 
     const topPointsTeam = teams.length > 0 ? teams[0] : null;
@@ -603,7 +621,7 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${tournament.name.replace(/\s+/g, '_')}_Final_Report.txt`;
+    a.download = `${liveTournament.name.replace(/\s+/g, '_')}_Final_Report.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -623,21 +641,21 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
           </button>
           <div className="flex items-center gap-4">
             <h2 className="text-4xl font-black uppercase italic tracking-tighter leading-none">
-              {tournament.name.split(' ')[0]} <span className="text-yellow-400">{tournament.name.split(' ').slice(1).join(' ')}</span>
+              {liveTournament.name.split(' ')[0]} <span className="text-yellow-400">{liveTournament.name.split(' ').slice(1).join(' ')}</span>
             </h2>
             <div className="bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono italic">CODE: {tournament.code}</span>
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono italic">CODE: {liveTournament.code}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-3 mt-3">
             <span className={cn(
               "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-xl",
-              tournament.gameType === GameType.FREE_FIRE ? "bg-orange-500/10 text-orange-400 border-orange-500/30" : "bg-yellow-400/10 text-yellow-400 border-yellow-400/30"
+              liveTournament.gameType === GameType.FREE_FIRE ? "bg-orange-500/10 text-orange-400 border-orange-500/30" : "bg-yellow-400/10 text-yellow-400 border-yellow-400/30"
             )}>
-              {tournament.gameType.replace('_', ' ')} OFFICIAL
+              {liveTournament.gameType.replace('_', ' ')} OFFICIAL
             </span>
-            {tournament.status === 'completed' ? (
+            {liveTournament.status === 'completed' ? (
               <>
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 w-1.5 bg-slate-500 rounded-full" />
@@ -694,7 +712,7 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
                       <th className="px-6 py-4 italic">Rank</th>
                       <th className="px-6 py-4">Team Name</th>
                       <th className="px-6 py-4 text-center">Matches</th>
-                      <th className="px-6 py-4 text-center">{tournament.gameType === GameType.FREE_FIRE ? 'Booyah' : 'WWCD'}</th>
+                      <th className="px-6 py-4 text-center">{liveTournament.gameType === GameType.FREE_FIRE ? 'Booyah' : 'WWCD'}</th>
                       <th className="px-6 py-4 text-center">Place Pts</th>
                       <th className="px-6 py-4 text-center">Kill Pts</th>
                       <th className="px-6 py-4 text-center text-yellow-400">Total Pts</th>
@@ -764,7 +782,7 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
                 <div className="space-y-3">
                   <div className="flex justify-between items-center p-3 bg-slate-950/50 rounded-2xl border border-slate-800">
                     <span className="text-[10px] font-bold uppercase text-slate-500">{tournament.gameType === GameType.FREE_FIRE ? 'BOOYAH' : 'WWCD'} / 1ST PLACE</span>
-                    <span className="text-sm font-black text-yellow-400 italic font-mono">{SCORING[tournament.gameType].placement[0]} PTS</span>
+                    <span className="text-sm font-black text-yellow-400 italic font-mono">{SCORING[liveTournament.gameType].placement[0]} PTS</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-slate-950/50 rounded-2xl border border-slate-800">
                     <span className="text-[10px] font-bold uppercase text-slate-500">Per Kill Elimination</span>
@@ -823,6 +841,20 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
 
             </div>
           </motion.div>
+        )}
+
+        {activeTab === 'leaderboard' && (
+          <div className="col-span-full mb-4">
+            <div className="rounded-3xl border border-yellow-400/20 bg-gradient-to-r from-yellow-400/10 to-slate-900/80 p-5 shadow-lg shadow-yellow-400/10">
+              <div className="flex items-center gap-2 mb-2">
+                <Bell className="w-4 h-4 text-yellow-400" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-300">Official Announcement</h3>
+              </div>
+              <p className="text-sm font-medium text-slate-200 leading-relaxed">
+                {liveTournament.announcement?.trim() || 'No official announcement yet. Organizers can add one from the admin console.'}
+              </p>
+            </div>
+          </div>
         )}
 
         {activeTab === 'players' && (() => {
@@ -931,8 +963,8 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
             </div>
           </motion.div>
         )})()}
-        {activeTab === 'matches' && <MatchHistory tournament={tournament} teams={teams} isAdmin={isAdmin} />}
-        {activeTab === 'admin' && <AdminPanel tournament={tournament} teams={teams} isAdmin={isAdmin} />}
+        {activeTab === 'matches' && <MatchHistory tournament={liveTournament} teams={teams} isAdmin={isAdmin} />}
+        {activeTab === 'admin' && <AdminPanel tournament={liveTournament} teams={teams} isAdmin={isAdmin} />}
       </AnimatePresence>
     </div>
   );
@@ -1088,6 +1120,7 @@ function MatchHistory({ tournament, teams, isAdmin }: { tournament: Tournament, 
 
 function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, teams: Team[], isAdmin: boolean }) {
   const [regMode, setRegMode] = useState<'manual' | 'bulk'>('manual');
+  const [announcementText, setAnnouncementText] = useState(tournament.announcement || '');
   const [parsedTeams, setParsedTeams] = useState<{ name: string, players: string[], tag: string }[]>([]);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -1116,6 +1149,10 @@ function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, te
   const [editingPlayerName, setEditingPlayerName] = useState("");
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
+
+  useEffect(() => {
+    setAnnouncementText(tournament.announcement || '');
+  }, [tournament.announcement]);
 
   const completeTournament = async () => {
     if (!window.confirm("Are you sure you want to finalize this event? It will be marked for automatic deletion in 2 hours.")) return;
@@ -1382,6 +1419,17 @@ function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, te
       </div>
     );
   }
+
+  const saveAnnouncement = async () => {
+    try {
+      await updateDoc(doc(db, 'tournaments', tournament.id), {
+        announcement: announcementText.trim()
+      });
+      showNotification('Announcement updated successfully');
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `tournaments/${tournament.id}`);
+    }
+  };
 
   const addTeam = async (e: FormEvent) => {
     e.preventDefault();
@@ -1697,7 +1745,6 @@ function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, te
             </div>
 
             <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 backdrop-blur-sm space-y-6">
-              {/* Mode Toggle Switch */}
               <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800/80">
                 <button
                   type="button"
@@ -1767,7 +1814,7 @@ function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, te
                       {newPlayerNames.length < 5 && (
                         <button
                           type="button"
-                          onClick={() => setNewPlayerNames([...newPlayerNames, ""])}
+                          onClick={() => setNewPlayerNames([...newPlayerNames, ""] )}
                           className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-yellow-400 transition-colors"
                         >
                           + Add Player Row
@@ -2129,6 +2176,52 @@ function AdminPanel({ tournament, teams, isAdmin }: { tournament: Tournament, te
               Update Points <Zap className="w-3.5 h-3.5 group-hover:animate-pulse" />
             </button>
           </form>
+        </div>
+
+        <div className="col-span-full">
+          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Admin Notifications</p>
+              <p className="mt-3 text-sm text-slate-200 leading-relaxed">
+                {notification ? notification.message : 'No active notifications. Save announcements or update matches to see system alerts here.'}
+              </p>
+            </div>
+            <div className="text-[10px] uppercase font-black tracking-[0.25em] text-slate-400">
+              {notification ? notification.type.toUpperCase() : 'STATUS: IDLE'}
+            </div>
+          </div>
+        </div>
+
+        <div className="col-span-full space-y-8">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded-xl">
+                  <Bell className="w-5 h-5 text-slate-400" />
+                </div>
+                <h3 className="font-black uppercase italic text-xl tracking-tighter">Live Announcement</h3>
+              </div>
+              <button
+                onClick={saveAnnouncement}
+                className="bg-yellow-400 text-slate-950 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-yellow-300 transition-colors"
+              >
+                Save
+              </button>
+            </div>
+
+            <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 backdrop-blur-sm space-y-4">
+              <textarea
+                value={announcementText}
+                onChange={(e) => setAnnouncementText(e.target.value)}
+                rows={5}
+                placeholder="Type a message for viewers. It will be shown above the leaderboard."
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:border-yellow-400 focus:outline-none"
+              />
+              <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">
+                This announcement will appear for everyone viewing the leaderboard.
+              </p>
+            </div>
+          </section>
         </div>
       </div>
 

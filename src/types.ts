@@ -11,6 +11,7 @@ export interface Tournament {
   createdAt: any;
   status: 'ongoing' | 'completed';
   creatorId: string;
+  announcement?: string;
   completedAt?: any;
   deletionEligibleAt?: any;
 }
