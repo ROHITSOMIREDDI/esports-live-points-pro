@@ -207,6 +207,10 @@ function AboutModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void 
               <span className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em]">Instagram</span>
               <a href="https://www.instagram.com/r_roh.it1.28/" target="_blank" rel="noopener noreferrer" className="font-bold text-slate-200 hover:text-white transition-colors block">@r_roh.it1.28</a>
             </div>
+            <div className="space-y-1">
+              <span className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em]">GitHub</span>
+              <a href="https://github.com/ROHITSOMIREDDI/esports-live-points-pro" target="_blank" rel="noopener noreferrer" className="font-bold text-yellow-400 hover:text-yellow-300 transition-colors block">ROHITSOMIREDDI/esports-live-points-pro</a>
+            </div>
           </div>
 
           <p className="text-[10px] text-slate-500 font-medium leading-relaxed italic">
@@ -699,6 +703,18 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
             exit={{ opacity: 0, y: -10 }}
             className="grid grid-cols-12 gap-4"
           >
+            <div className="col-span-full mb-4">
+              <div className="rounded-3xl border border-yellow-400/20 bg-gradient-to-r from-yellow-400/10 to-slate-900/80 p-5 shadow-lg shadow-yellow-400/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <Bell className="w-4 h-4 text-yellow-400" />
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-300">Official Announcement</h3>
+                </div>
+                <p className="text-sm font-medium text-slate-200 leading-relaxed">
+                  {liveTournament.announcement?.trim() || 'No official announcement yet. Organizers can add one from the admin console.'}
+                </p>
+              </div>
+            </div>
+
             {/* Main Standings Card */}
             <div className="col-span-full bg-slate-900/50 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-sm">
               <div className="bg-slate-800/40 px-6 py-4 flex justify-between items-center border-b border-slate-800">
@@ -841,20 +857,6 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
 
             </div>
           </motion.div>
-        )}
-
-        {activeTab === 'leaderboard' && (
-          <div className="col-span-full mb-4">
-            <div className="rounded-3xl border border-yellow-400/20 bg-gradient-to-r from-yellow-400/10 to-slate-900/80 p-5 shadow-lg shadow-yellow-400/10">
-              <div className="flex items-center gap-2 mb-2">
-                <Bell className="w-4 h-4 text-yellow-400" />
-                <h3 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-300">Official Announcement</h3>
-              </div>
-              <p className="text-sm font-medium text-slate-200 leading-relaxed">
-                {liveTournament.announcement?.trim() || 'No official announcement yet. Organizers can add one from the admin console.'}
-              </p>
-            </div>
-          </div>
         )}
 
         {activeTab === 'players' && (() => {
