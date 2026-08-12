@@ -599,7 +599,7 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
     }
 
     report += `====================================================\n`;
-    report += `               FINAL LEADERBOARD\n`;
+    report += `               LIVE LEADERBOARD\n`;
     report += `====================================================\n`;
     report += `Rank | Team Name                | Match | Pts | Kills | Total\n`;
     report += `----------------------------------------------------\n`;
@@ -655,22 +655,22 @@ function TournamentDashboard({ tournament, user, onBack }: { tournament: Tournam
             )}>
               {liveTournament.gameType.replace('_', ' ')} OFFICIAL
             </span>
-            {liveTournament.status === 'completed' ? (
-              <>
-                <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              {liveTournament.status === 'completed' ? (
+                <>
                   <div className="h-1.5 w-1.5 bg-slate-500 rounded-full" />
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">EVENT_ARCHIVED</span>
-                </div>
-                <button onClick={generateReport} className="ml-4 bg-yellow-400 text-slate-900 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-yellow-300 transition-colors shadow-lg shadow-yellow-400/20">
-                  Download Official Report
-                </button>
-              </>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">LIVE_DATA_FEED</span>
-              </div>
-            )}
+                </>
+              ) : (
+                <>
+                  <div className="h-1.5 w-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">LIVE_DATA_FEED</span>
+                </>
+              )}
+            </div>
+            <button onClick={generateReport} className="ml-4 bg-yellow-400 text-slate-900 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-yellow-300 transition-colors shadow-lg shadow-yellow-400/20">
+              Download Leaderboard Report
+            </button>
           </div>
         </div>
 
